@@ -218,7 +218,7 @@ function setPouletListeners(url) {
     if (pouletToggleEnabled === false) {
         return
     }
-    if (/^.*\/school\/.+\/(people|PEOPLE)\/$/.test(url)) {
+    if (/^.*\/school\/.+\/(people|PEOPLE)\/$/.test(url) || /^.*\/school\/.+\/(people|PEOPLE)\/?.*$/.test(url)) {
         schoolListener()
     }
     if (/^.*\/search\/results\/(people|PEOPLE)\/.*$/.test(url)) {
