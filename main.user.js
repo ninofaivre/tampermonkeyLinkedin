@@ -1,3 +1,26 @@
+// WARN : currently only using a shallow copy, need to switch
+// to a deep copy if defaultSettings starts having subObjs
+const defaultSettings = {
+  displayMode: false,
+  schoolAutoLoad: 'auto'
+}
+
+const settings = {}
+let currentSchoolLoadButton = null
+
+function initSettings() {
+  storedSettings = localStorage.getItem('pouletSettings')
+  if (storedSettings == null)
+    Object.assign(settings, defaultSettings)
+  else
+    Object.assign(settings, defaultSettings, (() => {
+      try { return JSON.parse(storedSettings) }
+      catch { return {} }
+    })())
+  localStorage.setItem('pouletSettings', JSON.stringify(settings))
+  settingsChangedHandler(settings)
+}
+
 let pouletToggleEnabled = localStorage.getItem('pouletToggleState') == "true";
 
 function getPixelColor(imgElement, x, y) {
@@ -60,16 +83,15 @@ async function extractImageFromSchoolLi(li) {
 }
 
 function schoolListMutationListener(mutationList, observer) {
-  console.log("scrollList mutation")
+  console.log("schoolList mutation")
   mutationList.forEach(mutation => {
     if (mutation.oldValue !== null) {
       return
     }
     mutation.addedNodes.forEach(async node => {
-      if (node.nodeName !== "LI") {
-        return
+      if (node.nodeName === "LI") {
+        removeElementIfImageNonOpenToWork(await extractImageFromSchoolLi(node), node)
       }
-      removeElementIfImageNonOpenToWork(await extractImageFromSchoolLi(node), node)
     })
   })
 }
@@ -146,21 +168,55 @@ async function getLoadingElementFromApplicationOutlet(selector) {
   })
 }
 
-async function schoolListener() {
-  document.getElementById('pouletInfos')["data-poulet"].mode = 'school/people';
-  const scrollList = await getLoadingElementFromApplicationOutlet('div.scaffold-finite-scroll ul')
-  if (pouletToggleEnabled === false) {
-    return
-  }
-  for (const node of Array.from(scrollList.children)) {
+async function schoolListListener(schoolListEl) {
+  for (const node of Array.from(schoolListEl.children)) {
     if (node.nodeName !== "LI") {
       continue
     }
     removeElementIfImageNonOpenToWork(await extractImageFromSchoolLi(node), node)
   }
   const schoolObserver = new MutationObserver(schoolListMutationListener)
-  schoolObserver.observe(scrollList, { childList: true })
+  schoolObserver.observe(schoolListEl, { childList: true })
   observersList.push(schoolObserver)
+}
+
+async function schoolLoadButtonListener(loadButtonEl) {
+  currentSchoolLoadButton = loadButtonEl
+  if (settings.schoolAutoLoad === 'disabled')
+    return
+  // TODO probably add some delay to avoid being rate limited
+  loadButtonEl.click()
+}
+
+function initSchoolLoadButtonObserver(observerTarget) {
+  const loadButtonObserver = new MutationObserver((mutationList, observer) => {
+    for (const mutation of mutationList) {
+      for (const node of mutation.addedNodes) {
+        if (node.nodeName !== 'DIV')
+          continue
+        const loadButtonEl = node.querySelector('button.scaffold-finite-scroll__load-button')
+        if (loadButtonEl !== null) {
+          schoolLoadButtonListener(loadButtonEl)
+          return
+        }
+      }
+    }
+  })
+  loadButtonObserver.observe(observerTarget, { childList: true })
+  observersList.push(loadButtonObserver)
+}
+
+async function schoolListener() {
+  document.getElementById('pouletInfos').infos.mode = 'school/people';
+  const scaffoldFiniteScrollEl = await getLoadingElementFromApplicationOutlet('div.scaffold-finite-scroll')
+  if (pouletToggleEnabled === true) {
+    schoolListListener(scaffoldFiniteScrollEl.querySelector('ul'))
+  }
+  const loadButtonEl = scaffoldFiniteScrollEl.querySelector('button.scaffold-finite-scroll__load-button')
+  currentSchoolLoadButton = loadButtonEl
+  if (settings.schoolAutoLoad === 'auto')
+    loadButtonEl.click()
+  initSchoolLoadButtonObserver(scaffoldFiniteScrollEl.querySelector(':scope > div:nth-of-type(2)'))
 }
 
 async function jj(searchResultElement) {
@@ -203,7 +259,7 @@ function searchResultContainerMutationListener(mutationList, observer) {
 
 async function searchListener() {
   console.log("searchListener called")
-  document.getElementById('pouletInfos')["data-poulet"].mode = 'search/people';
+  document.getElementById('pouletInfos').infos.mode = 'search/people';
   const searchResultElement = (await getLoadingElementFromApplicationOutlet('div.search-results-container ul li div[data-view-name="search-entity-result-universal-template"]')).closest('ul')
 
   const searchResultContainerElement = searchResultElement.closest('div').parentElement.parentElement
@@ -216,7 +272,7 @@ async function searchListener() {
 
 function setPouletListeners(url) {
   clearPouletListeners()
-  document.getElementById('pouletInfos')["data-poulet"].mode = null;
+  document.getElementById('pouletInfos').infos.mode = null;
   if (pouletToggleEnabled === false) {
     return
   }
@@ -242,60 +298,217 @@ function buttonClickListener() {
   setPouletListeners(window.location.href)
 }
 
+function settingsChangedHandler(changed) {
+  if (changed.displayMode !== undefined) {
+    const infosModeEl = document.getElementById('pouletInfos').querySelector('[data-id="mode"]')
+    infosModeEl.style.display = changed.displayMode && "block" || "none"
+    document.getElementById('pouletSettings').shadowRoot.getElementById('displayModeCheckBox').checked = changed.displayMode
+  }
+  if (changed.schoolAutoLoad) {
+    const schoolAutoLoadSelectEl = document.getElementById('pouletSettings')
+      .shadowRoot
+      .getElementById('schoolAutoLoadSelect')
+    schoolAutoLoadSelectEl.value = changed.schoolAutoLoad
+    if (changed.schoolAutoLoad === 'auto')
+      console.log("auto testa")
+    if (
+        changed.schoolAutoLoad === 'auto' &&
+        currentSchoolLoadButton !== null &&
+        document.contains(currentSchoolLoadButton)
+      ) {
+      currentSchoolLoadButton.click()
+    }
+  }
+  Object.assign(settings, changed)
+  localStorage.setItem('pouletSettings', JSON.stringify(settings))
+}
+
 function updateButtonAndStorage() {
-  const bouton = document.querySelector('#pouletToggle')
+  const toggleEl = document.querySelector('#pouletToggle')
   if (pouletToggleEnabled) {
-    bouton.innerHTML = 'ON'
-    bouton.style.backgroundColor = '#28a745';
+    toggleEl.innerHTML = 'ON'
+    toggleEl.style.backgroundColor = '#28a745';
     localStorage.setItem('pouletToggleState', true)
   } else {
-    bouton.innerHTML = 'OFF'
-    bouton.style.backgroundColor = '#ff0000';
+    toggleEl.innerHTML = 'OFF'
+    toggleEl.style.backgroundColor = '#ff0000';
     localStorage.setItem('pouletToggleState', false)
   }
+}
+
+function updateSettingsAndStorage() {
+}
+
+function settingsClickOutHandler(settingsEl, settingsButtonEl, event) {
+  if (
+      settingsEl.contains(event.target) ||
+      settingsButtonEl.contains(event.target) ||
+      (
+        currentSchoolLoadButton != null &&
+        document.contains(currentSchoolLoadButton) &&
+        currentSchoolLoadButton.contains(event.target)
+      )
+    )
+    return
+  closeSettings(settingsEl)
+}
+
+function settingsEscapeHandler(settingsEl, event) {
+  if (event.key !== 'Escape')
+    return
+  closeSettings(settingsEl)
+}
+
+function settingsClearCloseHandlers() {
+  document.removeEventListener('click', settingsClickOutHandler)
+  document.removeEventListener('keydown', settingsEscapeHandler)
+}
+
+function closeSettings(settingsEl) {
+  settingsClearCloseHandlers()
+  settingsEl.style.display = "none"
+}
+
+function settingsButtonHandler(settingsEl, settingsButtonEl) {
+  if (settingsEl.style.display == "block") {
+    closeSettings(settingsEl)
+    return
+  }
+  settingsEl.style.display = "block"
+  document.addEventListener('keydown', (event) => {
+    settingsEscapeHandler(settingsEl, event)
+  })
+  setTimeout(() => {
+    document.addEventListener('click', (event) => {
+      settingsClickOutHandler(settingsEl, settingsButtonEl, event)
+    })
+  }, 0)
 }
 
 function initHud() {
   if (document.getElementById("pouletHud") !== null) {
     alert("tentative de créer le hud qui existe déjà, ne devrais pas arriver")
   }
-  const hud = document.createElement('div');
-  hud.id = 'pouletHud';
+  const hudEl = document.createElement('div');
+  hudEl.id = 'pouletHud';
+  const shortcutsEl = document.createElement('div')
   Object.entries({
   	position: 'fixed',
   	top: '10px',
   	right: '100px',
   	"z-index": 1000,
-  }).forEach(([key, value]) => { hud.style.setProperty(key, value); });
-
-  const bouton = document.createElement('button');
-  bouton.id = 'pouletToggle';
+    height: '32px',
+    display: 'flex',
+  }).forEach(([key, value]) => { shortcutsEl.style.setProperty(key, value); });
   Object.entries({
-  	padding: '10px',
+  	position: 'fixed',
+  	top: '50px',
+  	right: shortcutsEl.style.right,
+  	"z-index": shortcutsEl.style.zIndex,
+  }).forEach(([key, value]) => { hudEl.style.setProperty(key, value); });
+
+  const toggleEl = document.createElement('button');
+  toggleEl.id = 'pouletToggle';
+  Object.entries({
+  	padding: '5px',
+    'margin-right': '5px',
   	color: 'white',
   	border: 'none',
   	"border-radius": '5px',
   	cursor: 'pointer',
   	fontSize: '16px',
-  }).forEach(([key, value]) => { bouton.style.setProperty(key, value); });
+  }).forEach(([key, value]) => { toggleEl.style.setProperty(key, value); });
 
   // Ajout de l'événement "click" pour appeler la fonction
-  bouton.addEventListener('click', () => {buttonClickListener()});
+  toggleEl.addEventListener('click', buttonClickListener);
 
-  const infos = document.createElement('p');
-  infos.id = 'pouletInfos';
-  infos["data-poulet"] = new Proxy({ mode: null }, {
+  const infosEl = document.createElement('div');
+  infosEl.id = 'pouletInfos';
+  const infosModeEl = document.createElement('p')
+  infosModeEl.dataset["id"] = 'mode'
+  infosModeEl.style.display = "none"
+  infosEl.infos = new Proxy({ mode: null }, {
     set(target, prop, value) {
+      if (value === target[prop])
+        return
       target[prop] = value;
-      document.getElementById("pouletInfos").innerText = `
-        ${target.mode && `mode : ${target.mode}` || ""}
-      `;
+      if (prop === "mode") {
+        infosModeEl.innerText = value && `mode : ${value}` || ""
+      }
     }
   });
+  infosEl.append(infosModeEl)
+
+  const settingsEl = document.createElement('div')
+  const settingsElShadow = settingsEl.attachShadow({ mode: 'open' })
+  settingsEl.id = 'pouletSettings'
+  const displayModeCheckBoxEl = document.createElement('input')
+  displayModeCheckBoxEl.id = 'displayModeCheckBox'
+  displayModeCheckBoxEl.type = "checkbox"
+  displayModeCheckBoxEl.addEventListener('click', (event) => {
+    settingsChangedHandler({ displayMode: event.target.checked })
+  })
+  displayModeLabelEl = document.createElement('label')
+  displayModeLabelEl.htmlFor = displayModeCheckBoxEl.id
+  displayModeLabelEl.innerText = 'display mode'
+  schoolAutoLoadSelectEl = document.createElement('select')
+  schoolAutoLoadSelectEl.id = 'schoolAutoLoadSelect'
+  schoolAutoLoadSelectEl.addEventListener("change", (event) => {
+    settingsChangedHandler({ schoolAutoLoad: event.target.value })
+  })
+  schoolAutoLoadOptionDisabledEl = document.createElement('option')
+  schoolAutoLoadOptionDisabledEl.value = "disabled"
+  schoolAutoLoadOptionDisabledEl.innerText = "disabled"
+  schoolAutoLoadOptionOnClickEl = document.createElement('option')
+  schoolAutoLoadOptionOnClickEl.value = "onClick"
+  schoolAutoLoadOptionOnClickEl.innerText = "on click"
+  schoolAutoLoadOptionAutoEl = document.createElement('option')
+  schoolAutoLoadOptionAutoEl.value = "auto"
+  schoolAutoLoadOptionAutoEl.innerText = "auto"
+  schoolAutoLoadSelectEl.append(
+    schoolAutoLoadOptionDisabledEl,
+    schoolAutoLoadOptionOnClickEl,
+    schoolAutoLoadOptionAutoEl
+  )
+  schoolAutoLoadLabelEl = document.createElement('label')
+  schoolAutoLoadLabelEl.for = schoolAutoLoadSelectEl.id
+  schoolAutoLoadLabelEl.innerText = 'school auto load '
+  settingsElShadow.append(
+    displayModeCheckBoxEl, displayModeLabelEl, document.createElement('br'),
+    schoolAutoLoadLabelEl, schoolAutoLoadSelectEl
+  )
+  Object.entries({
+    position: 'fixed',
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    'background-color': 'rgba(140, 140, 140, 0.65 )',
+    'border-radius': '6px',
+    padding: '20px',
+    'backdrop-filter': 'blur(2px)',
+    display: 'none',
+    "z-index": 1001
+  }).forEach(([key, value]) => { settingsEl.style.setProperty(key, value); });
+
+  const settingsButtonEl = document.createElement('button')
+  Object.entries({
+    padding: 0,
+    "line-height": 0,
+    border: 'none'
+  }).forEach(([key, value]) => { settingsButtonEl.style.setProperty(key, value); });
+  const settingsIcoEl = document.createElement('img')
+  settingsIcoEl.src = "data:image/png;base64, iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAADsAAAA7AF5KHG9AAAAGXRFWHRTb2Z0d2FyZQB3d3cuaW5rc2NhcGUub3Jnm+48GgAAA5pJREFUWIXFl1toVEcYx38zuzWx2iahTWzxQjbNbaP0TUnSgLcHrakNmArFCPahEMEQBB/EJxX6YqG1rNISpDeoiWC1UBrZF21FMZg+CG3MJtXuamrBJBWzXura7jnjw5gmu2fO2XOkrT/Yh/2+b77//zAz58wIDNQeUvWWokPAemAxUAEIU60HCpgQMGYr4mHF0dGdYjS/KKdpVY8qkRk+QPAOEAooWAgL+BzYdbVb3HEYqD+oKrMh+oGGf1k4n8uWpDXVJa7/Y6DugHrOmssFYNl/LD7NiF1EY7JTpMMAVjEHg4i/PB9eWwJhqf9nbTg/Bjfv+TZQH/qL94FOUXtI1duKIXzO+TMhOLsNyuflxifuw8ovtBmfZG3JUqlgq19xgIpnneIAFfNggSHuQVjadEilWBdomNdmDLpRYb0EKk2ZkIB9q6CvHdrqdO9IGexpce+2pwUipbq2rU6P3btS93KhUlTHlAXI/MzWV/XgaRKT2kBx2PuRMllI3YZo+Uxs/1n46idjuS1N4iVF0L0iNxYtLywOuma2OMDORigtNpZLhzhA1woom1tYzC8lRbBjuTlnfKbmxd4NbQXHh+FMSs/3mghsXuq9BhsXBTDw6SV4b7Xe8ybx7d/B99dmYqdT+vdJK0iDi78t+OyS2YBxCk4moLUXBm44c8eHc8WnOZOCEwlnfOCG7vXNSAADAKkpOHXFLOTG6aQzduqK7uWGq4EnQQR/EbkbiJTChhpnfG3EvZkpt6FG9wpkoD0K/VugybBy32rQq94k3m44STQt0r02Rc0GRHVMqfxg/xaofcHdtQK+Hp5ZD2si2pjXDIz8ARv7nHHjNrzwm7cBAWxu0D+/mHYUuEzB4UG4/cB/80KkM/Dxj+4GHEeI9EOIDebGEpP6Q1OITFbXzuajizCVMZbbYeAWUJ6f6fsZqsog+iIcG4JvR6GyFHY1w7pXzOLxq/DhAFybgjfr4O1lMDype7kwIWpialCBy6fCycLn4Ydt5tyqL+H3O+acEcFFaSviAYboLfAkORM2cRlWHEVfGnwx8ac+gOYzfg/GDXEPsnaIXgFQHVNHgHf9jnxpPrTkHcvPjWkTflHQ82u32P50LiaChD2HpmSnSEuA0d3iriV5A7j8P8gPWYLXk50iDbNeRI/vas3AEcDHjg9MVkFP6AHN0/dCcHl9Vx1WtdKmA309XwIscKv1QAHjCK5jE7dD9Ca7xC/5RY8AObgVwJWKub0AAAAASUVORK5CYII="
+  settingsIcoEl.alt = "settings"
+  settingsButtonEl.append(settingsIcoEl)
   
-  hud.appendChild(bouton);
-  hud.appendChild(infos);
-  document.body.appendChild(hud);
+  settingsButtonEl.addEventListener('click', () => {
+    settingsButtonHandler(settingsEl, settingsButtonEl)
+  })
+
+  shortcutsEl.append(toggleEl, settingsButtonEl)
+  hudEl.append(infosEl)
+
+  document.body.append(shortcutsEl, hudEl, settingsEl)
   updateButtonAndStorage()
 }
 
@@ -304,11 +517,24 @@ function initHud() {
   if (window.top !== window.self)
     return
   initHud()
+  initSettings()
   window.addEventListener('storage', function(event) {
-    if (event.key != 'pouletToggleState') { return }
-    if (event.oldValue == event.newValue) { return }
-    buttonClickListener()
-  });
+    if (event.oldValue == event.newValue)
+      return
+    if (event.key == 'pouletToggleState')
+      buttonClickListener()
+    if (event.key == 'pouletSettings') {
+      newSettings = JSON.parse(event.newValue)
+      changedSettings = [...(new Set([...Object.keys(settings), ...Object.keys(newSettings)]))]
+        .reduce((acc, el) => {
+          if (newSettings[el] != settings[el])
+            acc[el] = newSettings[el]
+          return acc
+        },{})
+      console.log("updated storage, changed settings :", changedSettings)
+      settingsChangedHandler(changedSettings)
+    }
+  })
   setPouletListeners(window.location.href)
   setPushStateListener()
   window.onpopstate = function(event) {
