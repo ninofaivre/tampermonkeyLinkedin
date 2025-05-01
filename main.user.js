@@ -2,7 +2,8 @@
 // to a deep copy if defaultSettings starts having subObjs
 const defaultSettings = {
   displayMode: false,
-  schoolAutoLoad: 'auto'
+  schoolAutoLoad: 'auto',
+  schoolAutoLoadWaitingTimeMs: 200
 }
 
 const settings = {}
@@ -21,6 +22,10 @@ function initSettings() {
 }
 
 let pouletToggleEnabled = localStorage.getItem('pouletToggleState') == "true";
+
+async function sleep (delay) {
+  return new Promise((resolve) => setTimeout(resolve, delay))
+}
 
 function getPixelColor(imgElement, x, y) {
   if (imgElement.crossOrigin != "anonymous") {
@@ -183,7 +188,7 @@ async function schoolLoadButtonListener(loadButtonEl) {
   currentSchoolLoadButton = loadButtonEl
   if (settings.schoolAutoLoad === 'disabled')
     return
-  // TODO probably add some delay to avoid being rate limited
+  await sleep(settings.schoolAutoLoadWaitingTimeMs)
   loadButtonEl.click()
 }
 
@@ -308,8 +313,6 @@ function settingsChangedHandler(changed) {
       .shadowRoot
       .getElementById('schoolAutoLoadSelect')
     schoolAutoLoadSelectEl.value = changed.schoolAutoLoad
-    if (changed.schoolAutoLoad === 'auto')
-      console.log("auto testa")
     if (
         changed.schoolAutoLoad === 'auto' &&
         currentSchoolLoadButton !== null &&
@@ -317,6 +320,12 @@ function settingsChangedHandler(changed) {
       ) {
       currentSchoolLoadButton.click()
     }
+  }
+  if (changed.schoolAutoLoadWaitingTimeMs !== undefined) {
+    const schoolAutoLoadWaitingTimeInputEl = document.getElementById('pouletSettings')
+      .shadowRoot
+      .getElementById('schoolAutoLoadWaitingTimeInput')
+    schoolAutoLoadWaitingTimeInputEl.value = changed.schoolAutoLoadWaitingTimeMs
   }
   Object.assign(settings, changed)
   localStorage.setItem('pouletSettings', JSON.stringify(settings))
@@ -472,14 +481,25 @@ function initHud() {
   schoolAutoLoadLabelEl = document.createElement('label')
   schoolAutoLoadLabelEl.for = schoolAutoLoadSelectEl.id
   schoolAutoLoadLabelEl.innerText = 'school auto load '
+  schoolAutoLoadWaitingTimeInputEl = document.createElement('input')
+  schoolAutoLoadWaitingTimeInputEl.type = 'text'
+  schoolAutoLoadWaitingTimeInputEl.id = 'schoolAutoLoadWaitingTimeInput'
+  schoolAutoLoadWaitingTimeInputEl.addEventListener('input', (event) => {
+    const value = parseInt(event.target.value)
+    settingsChangedHandler({ schoolAutoLoadWaitingTimeMs: value !== NaN && value || 0 })
+  })
+  schoolAutoLoadWaitingTimeLabelEl = document.createElement('label')
+  schoolAutoLoadWaitingTimeLabelEl.htmlFor = schoolAutoLoadWaitingTimeInputEl.id
+  schoolAutoLoadWaitingTimeLabelEl.innerText = 'school auto load delay (ms) '
   resetSettingsButtonEl = document.createElement('button')
   resetSettingsButtonEl.innerText = 'reset settings'
   resetSettingsButtonEl.addEventListener('click', () => {
     settingsChangedHandler(defaultSettings)
   })
   settingsElShadow.append(
-    displayModeCheckBoxEl, displayModeLabelEl, document.createElement('br'),
+    displayModeLabelEl, displayModeCheckBoxEl, document.createElement('br'),
     schoolAutoLoadLabelEl, schoolAutoLoadSelectEl, document.createElement('br'),
+    schoolAutoLoadWaitingTimeLabelEl, schoolAutoLoadWaitingTimeInputEl, document.createElement('br'),
     resetSettingsButtonEl
   )
   Object.entries({
