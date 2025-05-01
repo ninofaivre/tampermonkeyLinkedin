@@ -10,15 +10,14 @@ let currentSchoolLoadButton = null
 
 function initSettings() {
   storedSettings = localStorage.getItem('pouletSettings')
+  let newSettings
   if (storedSettings == null)
-    Object.assign(settings, defaultSettings)
+    settingsChangedHandler(defaultSettings)
   else
-    Object.assign(settings, defaultSettings, (() => {
+    settingsChangedHandler(Object.assign({}, defaultSettings, (() => {
       try { return JSON.parse(storedSettings) }
       catch { return {} }
-    })())
-  localStorage.setItem('pouletSettings', JSON.stringify(settings))
-  settingsChangedHandler(settings)
+    })()))
 }
 
 let pouletToggleEnabled = localStorage.getItem('pouletToggleState') == "true";
@@ -473,9 +472,15 @@ function initHud() {
   schoolAutoLoadLabelEl = document.createElement('label')
   schoolAutoLoadLabelEl.for = schoolAutoLoadSelectEl.id
   schoolAutoLoadLabelEl.innerText = 'school auto load '
+  resetSettingsButtonEl = document.createElement('button')
+  resetSettingsButtonEl.innerText = 'reset settings'
+  resetSettingsButtonEl.addEventListener('click', () => {
+    settingsChangedHandler(defaultSettings)
+  })
   settingsElShadow.append(
     displayModeCheckBoxEl, displayModeLabelEl, document.createElement('br'),
-    schoolAutoLoadLabelEl, schoolAutoLoadSelectEl
+    schoolAutoLoadLabelEl, schoolAutoLoadSelectEl, document.createElement('br'),
+    resetSettingsButtonEl
   )
   Object.entries({
     position: 'fixed',
