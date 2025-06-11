@@ -214,7 +214,6 @@ function initSchoolLoadButtonObserver(observerTarget) {
 }
 
 async function schoolListener() {
-  document.getElementById('pouletInfos').infos.mode = 'school/people';
   const scaffoldFiniteScrollEl = await getLoadingElementFromApplicationOutlet('div.scaffold-finite-scroll')
   if (pouletToggleEnabled === true) {
     schoolListListener(scaffoldFiniteScrollEl.querySelector('ul'))
@@ -265,8 +264,6 @@ function searchResultContainerMutationListener(mutationList, observer) {
 }
 
 async function searchListener() {
-  console.log("searchListener called")
-  document.getElementById('pouletInfos').infos.mode = 'search/people';
   const searchResultElement = (await getLoadingElementFromApplicationOutlet('div.search-results-container ul li div[data-view-name="search-entity-result-universal-template"]')).closest('ul')
 
   const searchResultContainerElement = searchResultElement.closest('div').parentElement.parentElement
@@ -284,9 +281,15 @@ function setPouletListeners(url) {
     return
   }
   if (/^.*\/school\/.+\/(people|PEOPLE)\/$/.test(url) || /^.*\/school\/.+\/(people|PEOPLE)\/?.*$/.test(url)) {
+    document.getElementById('pouletInfos').infos.mode = 'school/people';
+    schoolListener()
+  }
+  if (/^.*\/company\/.+\/(people|PEOPLE)\/$/.test(url) || /^.*\/company\/.+\/(people|PEOPLE)\/?.*$/.test(url)) {
+    document.getElementById('pouletInfos').infos.mode = 'company/people';
     schoolListener()
   }
   if (/^.*\/search\/results\/(people|PEOPLE)\/.*$/.test(url)) {
+    document.getElementById('pouletInfos').infos.mode = 'search/people';
     searchListener()
   }
 }
