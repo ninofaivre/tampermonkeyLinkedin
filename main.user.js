@@ -1,3 +1,6 @@
+const nativeLocalStorageSetter = Storage.prototype.setItem
+const nativeLocalStorageGetter = Storage.prototype.getItem
+
 // WARN : currently only using a shallow copy, need to switch
 // to a deep copy if defaultSettings starts having subObjs
 const defaultSettings = {
@@ -10,7 +13,7 @@ const settings = {}
 let currentSchoolLoadButton = null
 
 function initSettings() {
-  storedSettings = localStorage.getItem('pouletSettings')
+  storedSettings = nativeLocalStorageGetter.call(localStorage, 'pouletSettings')
   let newSettings
   if (storedSettings == null)
     settingsChangedHandler(defaultSettings)
@@ -21,7 +24,7 @@ function initSettings() {
     })()))
 }
 
-let pouletToggleEnabled = localStorage.getItem('pouletToggleState') == "true";
+let pouletToggleEnabled = nativeLocalStorageGetter.call(localStorage, 'pouletToggleState') == "true";
 
 async function sleep (delay) {
   return new Promise((resolve) => setTimeout(resolve, delay))
@@ -328,7 +331,7 @@ function settingsChangedHandler(changed) {
     schoolAutoLoadWaitingTimeInputEl.value = changed.schoolAutoLoadWaitingTimeMs
   }
   Object.assign(settings, changed)
-  localStorage.setItem('pouletSettings', JSON.stringify(settings))
+  nativeLocalStorageSetter.call(localStorage, 'pouletSettings', JSON.stringify(settings))
 }
 
 function updateButtonAndStorage() {
@@ -336,15 +339,14 @@ function updateButtonAndStorage() {
   if (pouletToggleEnabled) {
     toggleEl.innerHTML = 'ON'
     toggleEl.style.backgroundColor = '#28a745';
-    localStorage.setItem('pouletToggleState', true)
+    console.log("setting pouletToggleState to true in localStorage") 
+    nativeLocalStorageSetter.call(localStorage, 'pouletToggleState', true)
   } else {
     toggleEl.innerHTML = 'OFF'
     toggleEl.style.backgroundColor = '#ff0000';
-    localStorage.setItem('pouletToggleState', false)
+    console.log("setting pouletToggleState to false in localStorage") 
+    nativeLocalStorageSetter.call(localStorage, 'pouletToggleState', false)
   }
-}
-
-function updateSettingsAndStorage() {
 }
 
 function settingsClickOutHandler(settingsEl, settingsButtonEl, event) {
@@ -537,7 +539,7 @@ function initHud() {
   updateButtonAndStorage()
 }
 
-(function() {
+function main () {
   // just return if it is an Iframe
   if (window.top !== window.self)
     return
@@ -565,4 +567,6 @@ function initHud() {
   window.onpopstate = function(event) {
     setPouletListeners(window.location.href)
   }
-})();
+}
+
+document.addEventListener("DOMContentLoaded", main)
